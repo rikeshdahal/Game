@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, maximum-scale=1.0, minimum-scale=1.0, target-densitydpi=device-dpi">
     <title>Two Cars Game</title>
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -32,19 +32,24 @@
             border-radius: 10px;
             border: 3px solid #ccc;
             transition: left 0.2s ease;
+            display: block;
+            z-index: 10;
         }
         .obstacle {
             position: absolute;
             width: 30px;
             height: 30px;
             border: 3px solid #ccc;
+            z-index: 5;
         }
-        .circle {
-            border-radius: 50%;
+        .red-circle, .red-square {
             background-color: #ff3333;
         }
-        .square {
+        .blue-circle, .blue-square {
             background-color: #00cccc;
+        }
+        .red-circle, .blue-circle {
+            border-radius: 50%;
         }
         .lane-line {
             position: absolute;
@@ -53,6 +58,21 @@
             width: 2px;
             background-color: #ccc;
             opacity: 0.5;
+            z-index: 1;
+        }
+        #restart-btn, #home-btn {
+            display: none;
+            z-index: 20; /* Ensure buttons are above all other elements */
+        }
+        #start-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 24px;
+            text-align: center;
+            z-index: 15;
         }
     </style>
 </head>
@@ -68,195 +88,239 @@
             <div class="lane-line" style="left: 75%;"></div>
             <div id="red-car" class="car bg-[#ff3333]" style="left: 12.5%;"></div>
             <div id="blue-car" class="car bg-[#00cccc]" style="left: 62.5%;"></div>
+            <div id="start-message">Tap to Start</div>
         </div>
-        <button id="restart-btn" onclick="restartGame()" class="absolute bottom-5 left-1/2 transform -translate-x-1/2 text-white text-3xl bg-transparent border-none cursor-pointer">
+        <button id="restart-btn" class="absolute bottom-5 left-1/2 transform -translate-x-1/2 text-white text-3xl bg-transparent border-none cursor-pointer">
             <i class="fas fa-redo"></i>
         </button>
-        <button id="home-btn" onclick="goHome()" class="absolute bottom-5 left-5 text-white text-3xl bg-transparent border-none cursor-pointer">
+        <button id="home-btn" class="absolute bottom-5 left-5 text-white text-3xl bg-transparent border-none cursor-pointer">
             <i class="fas fa-home"></i>
         </button>
     </div>
 
     <script>
-        const gameArea = document.getElementById('game-area');
-        const redCar = document.getElementById('red-car');
-        const blueCar = document.getElementById('blue-car');
-        const scoreDisplay = document.getElementById('score');
-        const bestScoreDisplay = document.getElementById('best-score');
+        document.addEventListener('DOMContentLoaded', () => {
+            const gameArea = document.getElementById('game-area');
+            const redCar = document.getElementById('red-car');
+            const blueCar = document.getElementById('blue-car');
+            const scoreDisplay = document.getElementById('score');
+            const bestScoreDisplay = document.getElementById('best-score');
+            const restartBtn = document.getElementById('restart-btn');
+            const homeBtn = document.getElementById('home-btn');
+            const startMessage = document.getElementById('start-message');
 
-        let score = 0;
-        let bestScore = localStorage.getItem('bestScore') || 0;
-        bestScoreDisplay.textContent = `BEST: ${bestScore}`;
+            console.log('Red car element:', redCar);
+            console.log('Blue car element:', blueCar);
 
-        let redCarLane = 0; // 0: leftmost, 1: middle-left (red car only)
-        let blueCarLane = 2; // 2: middle-right, 3: rightmost (blue car only)
-        let gameOver = false;
-        let obstacles = [];
+            let score = 0;
+            let bestScore = localStorage.getItem('bestScore') || 0;
+            bestScoreDisplay.textContent = `BEST: ${bestScore}`;
 
-        const lanes = [
-            '12.5%', // Lane 0: leftmost (red car, red circles)
-            '37.5%', // Lane 1: middle-left (red car, red circles)
-            '62.5%', // Lane 2: middle-right (blue car, blue squares)
-            '87.5%'  // Lane 3: rightmost (blue car, blue squares)
-        ];
+            let redCarLane = 0;
+            let blueCarLane = 2;
+            let gameOver = false;
+            let obstacles = [];
+            let isGameStarted = false;
+            let animationFrameId = null;
+            let obstacleIntervalId = null;
 
-        function moveCars() {
-            redCar.style.left = lanes[redCarLane];
-            blueCar.style.left = lanes[blueCarLane];
-        }
+            const lanes = ['12.5%', '37.5%', '62.5%', '87.5%'];
 
-        function createObstacle() {
-            let type, lane;
-            // 50% chance to spawn on left (red) or right (blue)
-            if (Math.random() > 0.5) {
-                type = 'circle'; // Red circle for left side
-                lane = Math.random() > 0.5 ? 0 : 1; // Lane 0 or 1
-            } else {
-                type = 'square'; // Blue square for right side
-                lane = Math.random() > 0.5 ? 2 : 3; // Lane 2 or 3
+            function moveCars() {
+                redCar.style.left = lanes[redCarLane];
+                blueCar.style.left = lanes[blueCarLane];
             }
-            const obstacle = document.createElement('div');
-            obstacle.classList.add('obstacle', type);
-            obstacle.style.left = lanes[lane];
-            obstacle.style.top = '-30px';
-            gameArea.appendChild(obstacle);
-            obstacles.push({ element: obstacle, type, lane });
-        }
 
-        function moveObstacles() {
-            obstacles.forEach((obstacle, index) => {
-                let top = parseFloat(obstacle.element.style.top) + 5;
-                obstacle.element.style.top = top + 'px';
+            function createObstacle() {
+                let type, lane, color;
+                if (Math.random() > 0.5) {
+                    color = 'red';
+                    lane = Math.random() > 0.5 ? 0 : 1;
+                    type = Math.random() > 0.5 ? `${color}-circle` : `${color}-square`;
+                } else {
+                    color = 'blue';
+                    lane = Math.random() > 0.5 ? 2 : 3;
+                    type = Math.random() > 0.5 ? `${color}-circle` : `${color}-square`;
+                }
+                const obstacle = document.createElement('div');
+                obstacle.classList.add('obstacle', type);
+                obstacle.style.left = lanes[lane];
+                obstacle.style.top = '-30px';
+                gameArea.appendChild(obstacle);
+                obstacles.push({ element: obstacle, type, lane, color });
+            }
 
-                // Check collision with both cars
-                const redCarRect = redCar.getBoundingClientRect();
-                const blueCarRect = blueCar.getBoundingClientRect();
-                const obstacleRect = obstacle.element.getBoundingClientRect();
+            function moveObstacles() {
+                obstacles.forEach((obstacle, index) => {
+                    let top = parseFloat(obstacle.element.style.top) + 5;
+                    obstacle.element.style.top = top + 'px';
 
-                if (top > gameArea.clientHeight - 100 && top < gameArea.clientHeight) {
-                    // Red car collision (only in lanes 0 and 1, red circles)
-                    if (
-                        redCarRect.left < obstacleRect.right &&
-                        redCarRect.right > obstacleRect.left &&
-                        redCarRect.top < obstacleRect.bottom &&
-                        redCarRect.bottom > obstacleRect.top &&
-                        obstacle.lane === redCarLane &&
-                        obstacle.type === 'circle'
-                    ) {
-                        score += 10;
-                        scoreDisplay.textContent = `SCORE: ${score}`;
-                        if (score > bestScore) {
-                            bestScore = score;
-                            localStorage.setItem('bestScore', bestScore);
-                            bestScoreDisplay.textContent = `BEST: ${bestScore}`;
+                    const redCarRect = redCar.getBoundingClientRect();
+                    const blueCarRect = blueCar.getBoundingClientRect();
+                    const obstacleRect = obstacle.element.getBoundingClientRect();
+
+                    if (top > gameArea.clientHeight - 100 && top < gameArea.clientHeight) {
+                        if (
+                            redCarRect.left < obstacleRect.right &&
+                            redCarRect.right > obstacleRect.left &&
+                            redCarRect.top < obstacleRect.bottom &&
+                            redCarRect.bottom > obstacleRect.top &&
+                            obstacle.lane === redCarLane &&
+                            obstacle.color === 'red'
+                        ) {
+                            if (obstacle.type === 'red-circle') {
+                                score += 10;
+                                scoreDisplay.textContent = `SCORE: ${score}`;
+                                if (score > bestScore) {
+                                    bestScore = score;
+                                    localStorage.setItem('bestScore', bestScore);
+                                    bestScoreDisplay.textContent = `BEST: ${bestScore}`;
+                                }
+                                obstacle.element.remove();
+                                obstacles.splice(index, 1);
+                            } else if (obstacle.type === 'red-square') {
+                                gameOver = true;
+                            }
+                        }
+
+                        if (
+                            blueCarRect.left < obstacleRect.right &&
+                            blueCarRect.right > obstacleRect.left &&
+                            blueCarRect.top < obstacleRect.bottom &&
+                            blueCarRect.bottom > obstacleRect.top &&
+                            obstacle.lane === blueCarLane &&
+                            obstacle.color === 'blue'
+                        ) {
+                            if (obstacle.type === 'blue-circle') {
+                                score += 10;
+                                scoreDisplay.textContent = `SCORE: ${score}`;
+                                if (score > bestScore) {
+                                    bestScore = score;
+                                    localStorage.setItem('bestScore', bestScore);
+                                    bestScoreDisplay.textContent = `BEST: ${bestScore}`;
+                                }
+                                obstacle.element.remove();
+                                obstacles.splice(index, 1);
+                            } else if (obstacle.type === 'blue-square') {
+                                gameOver = true;
+                            }
+                        }
+                    }
+
+                    if (top > gameArea.clientHeight) {
+                        if (obstacle.type === 'blue-square' || obstacle.type === 'red-square') {
+                            gameOver = true;
                         }
                         obstacle.element.remove();
                         obstacles.splice(index, 1);
                     }
-
-                    // Blue car collision (only in lanes 2 and 3, blue squares)
-                    if (
-                        blueCarRect.left < obstacleRect.right &&
-                        blueCarRect.right > obstacleRect.left &&
-                        blueCarRect.top < obstacleRect.bottom &&
-                        blueCarRect.bottom > obstacleRect.top &&
-                        obstacle.lane === blueCarLane &&
-                        obstacle.type === 'square'
-                    ) {
-                        gameOver = true; // Blue car touches blue square: game over
-                    }
-                }
-
-                // Game over if a blue square reaches the bottom (missed)
-                if (top > gameArea.clientHeight) {
-                    if (obstacle.type === 'square') {
-                        gameOver = true; // Missed blue square: game over
-                    }
-                    obstacle.element.remove();
-                    obstacles.splice(index, 1);
-                }
-            });
-        }
-
-        function gameLoop() {
-            if (gameOver) {
-                alert('Game Over! Score: ' + score);
-                return;
+                });
             }
 
-            moveObstacles();
-            requestAnimationFrame(gameLoop);
-        }
+            function gameLoop() {
+                if (gameOver) {
+                    stopGame();
+                    restartBtn.style.display = 'block';
+                    homeBtn.style.display = 'block';
+                    startMessage.textContent = 'Game Over! Tap to Restart';
+                    startMessage.style.display = 'block';
+                    return;
+                }
 
-        function startGame() {
-            setInterval(createObstacle, 800);
-            gameLoop();
-        }
+                moveObstacles();
+                animationFrameId = requestAnimationFrame(gameLoop);
+            }
 
-        function restartGame() {
-            obstacles.forEach(obstacle => obstacle.element.remove());
-            obstacles = [];
-            score = 0;
-            scoreDisplay.textContent = `SCORE: ${score}`;
-            gameOver = false;
-            redCarLane = 0; // Start in leftmost lane
-            blueCarLane = 2; // Start in middle-right lane
-            moveCars();
-            startGame();
-        }
+            function startGame() {
+                if (isGameStarted) return;
+                isGameStarted = true;
+                startMessage.style.display = 'none';
+                restartBtn.style.display = 'none';
+                homeBtn.style.display = 'none';
+                obstacleIntervalId = setInterval(createObstacle, 800);
+                gameLoop();
+            }
 
-        function goHome() {
-            alert('Returning to Home Screen');
-        }
+            function stopGame() {
+                isGameStarted = false;
+                if (animationFrameId) {
+                    cancelAnimationFrame(animationFrameId);
+                    animationFrameId = null;
+                }
+                if (obstacleIntervalId) {
+                    clearInterval(obstacleIntervalId);
+                    obstacleIntervalId = null;
+                }
+            }
 
-        // Touch controls with swipe detection
-        let touchStartX = 0;
-        let touchStartY = 0;
+            function restartGame() {
+                console.log('Restart button clicked');
+                stopGame();
+                obstacles.forEach(obstacle => obstacle.element.remove());
+                obstacles = [];
+                score = 0;
+                scoreDisplay.textContent = `SCORE: ${score}`;
+                gameOver = false;
+                redCarLane = 0;
+                blueCarLane = 2;
+                moveCars();
+                startMessage.textContent = 'Tap to Start';
+                startMessage.style.display = 'block';
+                restartBtn.style.display = 'none';
+                homeBtn.style.display = 'none';
+            }
 
-        gameArea.addEventListener('touchstart', (e) => {
-            e.preventDefault();
-            touchStartX = e.touches[0].clientX;
-            touchStartY = e.touches[0].clientY;
-        });
+            function goHome() {
+                console.log('Home button clicked');
+                alert('Returning to Home Screen');
+            }
 
-        gameArea.addEventListener('touchmove', (e) => {
-            e.preventDefault();
-            const touchX = e.touches[0].clientX;
-            const touchY = e.touches[0].clientY;
-            const deltaX = touchX - touchStartX;
-            const deltaY = touchY - touchStartY;
+            // Add event listeners for buttons
+            restartBtn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                restartGame();
+            });
+            restartBtn.addEventListener('click', restartGame);
 
-            if (Math.abs(deltaX) > Math.abs(deltaY)) { // Horizontal swipe
-                const screenWidth = window.innerWidth;
-                if (touchX < screenWidth / 2) {
-                    // Red car control (lanes 0 and 1 only)
-                    if (deltaX > 20 && redCarLane < 1) {
-                        redCarLane++; // Swipe right (max lane 1)
-                        moveCars();
-                        touchStartX = touchX;
-                    } else if (deltaX < -20 && redCarLane > 0) {
-                        redCarLane--; // Swipe left (min lane 0)
-                        moveCars();
-                        touchStartX = touchX;
+            homeBtn.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                goHome();
+            });
+            homeBtn.addEventListener('click', goHome);
+
+            // Touch controls: Tap to start game or move to specific lane
+            gameArea.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                const touchX = e.touches[0].clientX;
+                const gameAreaRect = gameArea.getBoundingClientRect();
+                const touchXRelative = touchX - gameAreaRect.left;
+                const gameWidth = gameAreaRect.width;
+
+                // Calculate lane based on touch position
+                const laneWidth = gameWidth / 4;
+                const tappedLane = Math.floor(touchXRelative / laneWidth);
+
+                if (!isGameStarted) {
+                    startGame();
+                    return;
+                }
+
+                // Move car to the tapped lane
+                if (touchX < window.innerWidth / 2) {
+                    if (tappedLane === 0 || tappedLane === 1) {
+                        redCarLane = tappedLane;
                     }
                 } else {
-                    // Blue car control (lanes 2 and 3 only)
-                    if (deltaX > 20 && blueCarLane < 3) {
-                        blueCarLane++; // Swipe right (max lane 3)
-                        moveCars();
-                        touchStartX = touchX;
-                    } else if (deltaX < -20 && blueCarLane > 2) {
-                        blueCarLane--; // Swipe left (min lane 2)
-                        moveCars();
-                        touchStartX = touchX;
+                    if (tappedLane === 2 || tappedLane === 3) {
+                        blueCarLane = tappedLane;
                     }
                 }
-            }
-        });
+                moveCars();
+            });
 
-        // Start the game
-        moveCars();
-        startGame();
+            // Initial setup: Position cars but don't start the game
+            moveCars();
+        });
     </script>
 </body>
 </html>
