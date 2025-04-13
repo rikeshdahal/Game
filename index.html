@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Two Cars Game</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome CDN -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+    <style>
+        body {
+            background-color: #1a1a2e;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        #game-area {
+            background-color: #162447;
+            border: 2px solid #ccc;
+        }
+        .car {
+            width: 40px;
+            height: 80px;
+            position: absolute;
+            bottom: 20px;
+            border-radius: 10px;
+            border: 3px solid #ccc;
+        }
+        .obstacle {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            border: 3px solid #ccc;
+        }
+        .circle {
+            border-radius: 50%;
+            background-color: #ff3333;
+        }
+        .square {
+            background-color: #00cccc;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container" class="w-full max-w-[400px] h-full relative">
+        <div id="score-board" class="flex justify-between p-2 text-white">
+            <div id="score" class="bg-[#00aaff] px-4 py-2 rounded-lg text-lg">SCORE: 0</div>
+            <div id="best-score" class="bg-[#00aaff] px-4 py-2 rounded-lg text-lg">BEST: 0</div>
+        </div>
+        <div id="game-area" class="w-full h-[calc(100%-60px)] relative overflow-hidden">
+            <div id="red-car" class="car bg-[#ff3333]" style="left: 25%;"></div>
+            <div id="blue-car" class="car bg-[#00cccc]" style="left: 75%;"></div>
+        </div>
+        <button id="restart-btn" onclick="restartGame()" class="absolute bottom-5 left-1/2 transform -translate-x-1/2 text-white text-3xl bg-transparent border-none cursor-pointer">
+            <i class="fas fa-redo"></i>
+        </button>
+        <button id="home-btn" onclick="goHome()" class="absolute bottom-5 left-5 text-white text-3xl bg-transparent border-none cursor-pointer">
+            <i class="fas fa-home"></i>
+        </button>
+    </div>
+
+    <script>
+        const gameArea = document.getElementById('game-area');
+        const redCar = document.getElementById('red-car');
+        const blueCar = document.getElementById('blue-car');
+        const scoreDisplay = document.getElementById('score');
+        const bestScoreDisplay = document.getElementById('best-score');
+
+        let score = 0;
+        let bestScore = localStorage.getItem('bestScore') || 0;
+        bestScoreDisplay.textContent = `BEST: ${bestScore}`;
+
+        let redCarLane = 1; // 0: left, 1: right
+        let blueCarLane = 1; // 0: left, 1: right
+        let gameOver = false;
+        let obstacles = [];
+
+        const lanes = [
+            { red: '25%', blue: '75%' }, // Lane 0
+            { red: '75%', blue: '25%' }  // Lane 1
+        ];
+
+        function moveCars() {
+            redCar.style.left = lanes[redCarLane].red;
+            blueCar.style.left = lanes[blueCarLane].blue;
+        }
+
+        function createObstacle() {
+            const type = Math.random() > 0.5 ? 'circle' : 'square';
+            const lane = Math.random() > 0.5 ? 0 : 1;
+            const obstacle = document.createElement('div');
+            obstacle.classList.add('obstacle', type);
+            obstacle.style.left = type === 'circle' ? lanes[lane].red : lanes[lane].blue;
+            obstacle.style.top = '-30px';
+            gameArea.appendChild(obstacle);
+            obstacles.push({ element: obstacle, type, lane });
+        }
+
+        function moveObstacles() {
+            obstacles.forEach((obstacle, index) => {
+                let top = parseFloat(obstacle.element.style.top) + 5;
+                obstacle.element.style.top = top + 'px';
+
+                // Check collision
+                const car = obstacle.type === 'circle' ? redCar : blueCar;
+                const carLane = obstacle.type === 'circle' ? redCarLane : blueCarLane;
+                const carRect = car.getBoundingClientRect();
+                const obstacleRect = obstacle.element.getBoundingClientRect();
+
+                if (
+                    top > gameArea.clientHeight - 100 &&
+                    top < gameArea.clientHeight &&
+                    obstacle.lane === carLane
+                ) {
+                    if (
+                        carRect.left < obstacleRect.right &&
+                        carRect.right > obstacleRect.left &&
+                        carRect.top < obstacleRect.bottom &&
+                        carRect.bottom > obstacleRect.top
+                    ) {
+                        gameOver = true;
+                    } else if (top > gameArea.clientHeight - 80) {
+                        score++;
+                        scoreDisplay.textContent = `SCORE: ${score}`;
+                        if (score > bestScore) {
+                            bestScore = score;
+                            localStorage.setItem('bestScore', bestScore);
+                            bestScoreDisplay.textContent = `BEST: ${bestScore}`;
+                        }
+                    }
+                }
+
+                // Remove obstacle if it goes off screen
+                if (top > gameArea.clientHeight) {
+                    obstacle.element.remove();
+                    obstacles.splice(index, 1);
+                }
+            });
+        }
+
+        function gameLoop() {
+            if (gameOver) {
+                alert('Game Over! Score: ' + score);
+                return;
+            }
+
+            moveObstacles();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function startGame() {
+            setInterval(createObstacle, 1000);
+            gameLoop();
+        }
+
+        function restartGame() {
+            obstacles.forEach(obstacle => obstacle.element.remove());
+            obstacles = [];
+            score = 0;
+            scoreDisplay.textContent = `SCORE: ${score}`;
+            gameOver = false;
+            redCarLane = 1;
+            blueCarLane = 1;
+            moveCars();
+            startGame();
+        }
+
+        function goHome() {
+            alert('Returning to Home Screen');
+            // Add logic to navigate to home screen if needed
+        }
+
+        // Touch controls for mobile
+        gameArea.addEventListener('touchstart', (e) => {
+            const touchX = e.touches[0].clientX;
+            const screenWidth = window.innerWidth;
+
+            if (touchX < screenWidth / 2) {
+                redCarLane = redCarLane === 0 ? 1 : 0; // Toggle red car lane
+            } else {
+                blueCarLane = blueCarLane === 0 ? 1 : 0; // Toggle blue car lane
+            }
+            moveCars();
+        });
+
+        // Start the game
+        moveCars();
+        startGame();
+    </script>
+</body>
+</html>
